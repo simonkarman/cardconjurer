@@ -1539,6 +1539,7 @@ function writeText(textObject, targetContext) {
 	var drawingText = true;
 	//Repeatedly tries to draw the text at smaller and smaller sizes until it fits
 	outerloop: while (drawingText) {
+		manaSymbolsToRender = [];
 		//Rest of the text info loaded that may have been changed by a previous attempt at drawing the text
 		var textColor = textObject.color || 'black';
 		if (textObject.conditionalColor != undefined) {
@@ -1679,6 +1680,7 @@ function writeText(textObject, targetContext) {
 		//Begin looping through words/codes
 		innerloop: for (word of splitText) {
 			var wordToWrite = word;
+			var deferredMana = null;
 			if (wordToWrite.includes('{') && wordToWrite.includes('}') || textManaCost || savedFont) {
 				var possibleCode = wordToWrite.toLowerCase().replace('{', '').replace('}', '');
 				wordToWrite = null;
@@ -2033,6 +2035,12 @@ function writeText(textObject, targetContext) {
 						shadowBlur: textShadowBlur
 					});
 					currentX += manaSymbolWidth + manaSymbolSpacing * 2;
+					// Keep ordinary inline symbols in the same width check as words.
+					// Positioned mana costs retain their frame-pack behavior.
+					if (!textManaCost && !textObject.manaPlacement && !textObject.manaLayout && !textObject.manaImageScale && textArcRadius == 0) {
+						deferredMana = manaSymbolsToRender.pop();
+						currentX -= manaSymbolWidth + manaSymbolSpacing * 2;
+					}
 
 					manaSymbolColor = origManaSymbolColor;
 				} else {
@@ -2196,8 +2204,10 @@ function writeText(textObject, targetContext) {
 				wordToWrite = wordToWrite.replace(/f(?:\s|$)/g, '\ue006').replace(/h(?:\s|$)/g, '\ue007').replace(/m(?:\s|$)/g, '\ue008').replace(/n(?:\s|$)/g, '\ue009').replace(/k(?:\s|$)/g, '\ue00a');
 			}
 
-			//if the word goes past the max line width, go to the next line
-			if (wordToWrite && lineContext.measureText(wordToWrite).width + currentX >= textWidth && textArcRadius == 0) {
+			// Inline symbols can wrap before their image is drawn.
+			var tokenWidth = deferredMana ? deferredMana.width + (textSize * 0.04 + textManaSpacing) * 2 :
+				(wordToWrite ? lineContext.measureText(wordToWrite).width : 0);
+			if (tokenWidth && currentX + tokenWidth >= textWidth && textArcRadius == 0) {
 				if (textOneLine && startingTextSize > 1) {
 					//doesn't fit... try again at a smaller text size?
 					startingTextSize -= 1;
@@ -2241,6 +2251,12 @@ function writeText(textObject, targetContext) {
 				currentY += textSize + newLineSpacing;
 				newLineSpacing = (textObject.lineSpacing || 0) * textSize;
 				newLine = false;
+			}
+			if (deferredMana) {
+				deferredMana.x = currentX + canvasMargin + (textSize * 0.04 + textManaSpacing);
+				deferredMana.currentX = currentX;
+				manaSymbolsToRender.push(deferredMana);
+				currentX += tokenWidth;
 			}
 			//if there's a word to write, it's not a space on a new line, and it's allowed to write words, then we write the word
 			if (wordToWrite && (currentX != startingCurrentX || wordToWrite != ' ') && !textManaCost) {
